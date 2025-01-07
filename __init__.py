@@ -6,6 +6,9 @@ from Crypto.CEX.cex import CentralizedExchange, free_exchanges
 from LocalStorage.ticker_lists import gmx
 
 
+# Look at this for dex prices: https://coinsbench.com/using-web3-python-to-get-latest-price-of-smart-contract-token-92aafcb2bde7
+
+
 def finviz():
     fin = Finviz()
     df = fin.get_low_cap_movers()
