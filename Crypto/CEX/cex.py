@@ -46,6 +46,30 @@ class CentralizedExchange:
 
         return supported_exchanges
 
+    def compare_candles(self, base_ticker: str, compare_ticker: str):
+        b_candle = self.fetch_candles(base_ticker)
+        c_candle = self.fetch_candles(compare_ticker)
+        b_recv = False
+        c_recv = False
+        try:
+            b_candle = b_candle["change"].dropna().to_list()
+            b_recv = True
+        except KeyError:
+            pass
+        try:
+            c_candle = c_candle["change"].dropna().to_list()
+            c_recv = True
+        except KeyError:
+            pass
+
+        if b_recv and c_recv:
+            similarity_scores = [
+                1 - abs(b - c) / max(b_candle) for b, c in zip(b_candle, c_candle)
+            ]
+            return similarity_scores
+        else:
+            return np.nan
+
     def fetch_candles(
         self,
         ticker: str,
@@ -64,6 +88,7 @@ class CentralizedExchange:
         )
 
         if not df.empty:
+            df["change"] = df["close"].pct_change() * 100
             df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
             pst_offset = dt.timedelta(hours=-8)
             df["timestamp"] = df["timestamp"] + pst_offset
@@ -76,7 +101,13 @@ class CentralizedExchange:
                 df[skey] = ((df[key]) - df["close"]) / abs(df["close"]) * 100
 
             df["rsi"] = self.ta.rsi(df["close"])
-
+            df["vwap"] = self.ta.vwap(
+                df["high"],
+                low=df["low"],
+                close=df["close"],
+                volume_share_qty=df["volume_qty"],
+            )
+            df["vwap_spread"] = ((df["vwap"] - df["close"]) / abs(df["close"])) * 100
         return df
 
     def _fetch_candle(

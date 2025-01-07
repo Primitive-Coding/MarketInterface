@@ -38,16 +38,40 @@ class CexAggregator:
         candles = {}
         for k, v in self.cex_objects.items():
             candle = v.fetch_candles(ticker, market=market)
-            print(f"Candle: {candle}")
             candles[k] = candle
         return candles
 
-    def aggregate_candles(self, tickers: list, market: str = "USD"):
+    def compare_candles(
+        self, tickers: list, market: str = "USD", base_ticker: str = "BTC"
+    ):
+        data = {"ticker": [], "score": []}
+        for k, v in self.cex_objects.items():
+            for t in tickers:
+                if t != base_ticker:
+                    sim_score = v.compare_candles(base_ticker, compare_ticker=t)
+                    try:
+                        mean = sum(sim_score) / len(sim_score)
+                    except TypeError:
+                        mean = np.nan
+                    data["ticker"].append(t)
+                    data["score"].append(mean)
+        df = pd.DataFrame(data).set_index("ticker")
+        df.sort_values("score", inplace=True, ascending=False)
+        return df
+
+    def aggregate_candles(
+        self,
+        tickers: list,
+        market: str = "USD",
+        aggregate_columns: bool = False,
+        columns_to_aggregate: list = ["close", "rsi", "vwap_spread", "spread_200"],
+    ):
         candles = {}
         for t in tickers:
             candles[t] = self.get_candles(t, market)
 
-        self._aggregate_columns(candles, ["close", "rsi", "spread_200"])
+        if aggregate_columns:
+            candles = self._aggregate_columns(candles, columns_to_aggregate)
         return candles
 
     def _aggregate_columns(self, candles: dict, column: str):
@@ -74,5 +98,26 @@ class CexAggregator:
                             data[(k, col)] = values
 
         data = pd.DataFrame(data)
+        return data
 
-        print(f"Data: {data}")
+    def _find_max_value(self, aggregated_candles: pd.DataFrame, column: str):
+        cols = aggregated_candles.columns.to_list()
+        tickers = list(set([c[0] for c in cols]))
+        data = {}
+        for t in tickers:
+            value = aggregated_candles[t][column].iloc[-1]
+            data[t] = value
+        max_key = max(data, key=data.get)
+        max_value = data[max_key]
+        return {max_key: max_value}
+
+    def _find_min_value(self, aggregated_candles: pd.DataFrame, column: str):
+        cols = aggregated_candles.columns.to_list()
+        tickers = list(set([c[0] for c in cols]))
+        data = {}
+        for t in tickers:
+            value = aggregated_candles[t][column].iloc[-1]
+            data[t] = value
+        max_key = min(data, key=data.get)
+        max_value = data[max_key]
+        return {max_key: max_value}
