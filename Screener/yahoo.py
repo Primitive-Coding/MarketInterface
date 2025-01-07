@@ -1,8 +1,17 @@
+import warnings
 import numpy as np
 import pandas as pd
 
 
 import yfinance as yf
+
+# Date & Time
+import datetime as dt
+import pytz
+
+# Sentiment Model
+
+from MachineLearning.NLP.sentiment_analysis import SentimentAnalysis
 
 
 class YahooAggregator:
@@ -140,13 +149,58 @@ class YahooScreener:
     def calc_growth(
         self, values: pd.Series, use_ttm: bool = True, use_average: bool = False
     ):
-        change = values.pct_change()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            change = values.pct_change()
         if use_ttm:
             value = change.iloc[-1]
             return value
         if use_average:
             value = change.mean()
             return value
+
+    def _convert_date(self, date, tz: str = "PST"):
+        utc_time = dt.datetime.strptime(date, "%Y-%m-%dT%H:%M:%SZ")
+        utc_zone = pytz.utc
+        pst_zone = pytz.timezone("US/Pacific")
+        # Localize the time to UTC
+        utc_time = utc_zone.localize(utc_time)
+
+        # Convert to PST
+        pst_time = utc_time.astimezone(pst_zone)
+        pst_time = pst_time.strftime("%Y-%m-%d %H:%M:%S %Z")
+        return pst_time
+
+    def get_news(self):
+        news = self.obj.news
+        data = {
+            "date": [],
+            "id": [],
+            "title": [],
+            "summary": [],
+            "url": [],
+            "publisher": [],
+        }
+
+        for n in news:
+            _id = n["id"]
+            content = n["content"]
+            title = content["title"]
+            summary = content["summary"]
+            date = content["pubDate"]
+            date = self._convert_date(date)
+            url = content["canonicalUrl"]["url"]
+            publisher = content["provider"]["displayName"]
+            data["date"].append(date)
+            data["id"].append(_id)
+            data["title"].append(title)
+            data["summary"].append(summary)
+            data["url"].append(url)
+            data["publisher"].append(publisher)
+        data = pd.DataFrame(data).set_index("date").iloc[::-1]
+        print(f"DATA: {data}")
+
+        return news
 
     """
     ==================================================================================================================================
@@ -192,8 +246,9 @@ def format_percent(val, decimals: int = 2):
         tickers = val.index.to_list()
         for t in tickers:
             v = val[t]
-            v_format = val_format.format(v)
-            val[t] = val_format.format(v)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", FutureWarning)
+                val[t] = val_format.format(v)
         return val
     else:
         val = val_format.format(val)
@@ -201,7 +256,14 @@ def format_percent(val, decimals: int = 2):
 
 
 if __name__ == "__main__":
-    tickers = ["NVO", "LLY", "MRNA"]
-    ya = YahooAggregator(tickers)
-    g = ya.get_growth()
-    print(f"G: {g}")
+
+    mode = ""
+
+    if mode == "agg":
+        tickers = ["NVO", "LLY", "MRNA"]
+        ya = YahooAggregator(tickers)
+        g = ya.get_growth()
+    else:
+        ys = YahooScreener("RIVN")
+        n = ys.get_news()
+        print(f"N: {n}")
