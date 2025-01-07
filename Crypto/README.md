@@ -1,7 +1,9 @@
 # Compare Similarity
 
 tickers = ["BTC", "ETH", "XRP"]
+
 agg = CexAggregator(["coinbase"])
+
 sim_scores = agg.compare_candles(tickers)
 
 '''
