@@ -1,6 +1,8 @@
 from Screener.finviz import Finviz
+from Screener.yahoo import YahooAggregator, YahooScreener
 from Crypto.CEX.cex_aggregator import CexAggregator
 from Crypto.CEX.cex import CentralizedExchange, free_exchanges
+
 
 # Ticker lists
 from LocalStorage.ticker_lists import gmx
@@ -29,6 +31,11 @@ def CEX():
     # c.plot("XRP")
 
 
-if __name__ == "__main__":
+def YAHOO():
+    ys = YahooScreener("RIVN")
+    n = ys.get_news()
+    print(f"N: {n}")
 
-    CEX()
+
+if __name__ == "__main__":
+    YAHOO()

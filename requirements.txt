@@ -1,7 +1,15 @@
+# Standard Python
+pandas
+setuptools
+matplotlib
+
+
+# Finance Related
 ccxt
 mplfinance
-pandas
 pandas-ta
 pyfinviz
 yfinance
-setuptools
+
+# Machine Learning Related 
+transformers
