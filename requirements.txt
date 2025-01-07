@@ -1,0 +1,7 @@
+ccxt
+mplfinance
+pandas
+pandas-ta
+pyfinviz
+yfinance
+setuptools
