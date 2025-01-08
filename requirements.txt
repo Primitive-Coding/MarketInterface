@@ -2,7 +2,7 @@
 pandas
 setuptools
 matplotlib
-
+scipy
 
 # Finance Related
 ccxt

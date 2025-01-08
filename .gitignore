@@ -1,2 +1,5 @@
 venv
 .env
+Crypto/CEX/__pycache__
+Options/__pycache__
+Screener/__pycache__

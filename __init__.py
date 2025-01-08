@@ -2,6 +2,7 @@ from Screener.finviz import Finviz
 from Screener.yahoo import YahooAggregator, YahooScreener
 from Crypto.CEX.cex_aggregator import CexAggregator
 from Crypto.CEX.cex import CentralizedExchange, free_exchanges
+from Options.options import Options
 
 
 # Ticker lists
@@ -37,5 +38,10 @@ def YAHOO():
     print(f"N: {n}")
 
 
+def OPTIONS():
+    op = Options("RIVN")
+    c = op.get_options_chain()
+
+
 if __name__ == "__main__":
-    YAHOO()
+    OPTIONS()
