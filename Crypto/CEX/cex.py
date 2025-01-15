@@ -1,3 +1,4 @@
+import asyncio
 import numpy as np
 import pandas as pd
 
@@ -5,7 +6,8 @@ from TechnicalAnalysis.ta import TechnicalAnalysis
 
 # CCXT
 import ccxt
-from ccxt.base.errors import BadSymbol
+import ccxt.async_support as ccxt_async
+from ccxt.base.errors import BadSymbol, NotSupported
 
 import mplfinance as mpf
 
@@ -70,6 +72,24 @@ class CentralizedExchange:
         else:
             return np.nan
 
+    async def async_fetch_candles(
+        self, ticker: str, market: str = "USD", timeframe: str = "1m", limit: int = 300
+    ):
+        symbol = f"{ticker}/{market}"
+        exchange = getattr(ccxt_async, self.name)()
+        candles = await exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        return candles
+
+    async def async_fetch_multiple_candles(
+        self, tickers: str, market: str = "USD", timeframe: str = "1m", limit: int = 300
+    ):
+        tasks = [
+            self.async_fetch_candles(ticker, market, timeframe, limit)
+            for ticker in tickers
+        ]
+        results = await asyncio.gather(*tasks)
+        return results
+
     def fetch_candles(
         self,
         ticker: str,
@@ -77,6 +97,8 @@ class CentralizedExchange:
         timeframe="1m",
         limit: int = 300,
         stable_coin: bool = True,
+        apply_indicators: bool = True,
+        indicators: list = ["rsi", "ema"],
     ):
         ohlcv = self._fetch_candle(
             ticker, timeframe, limit, stable_coin=stable_coin, market=market
@@ -88,26 +110,16 @@ class CentralizedExchange:
         )
 
         if not df.empty:
-            df["change"] = df["close"].pct_change() * 100
             df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
             pst_offset = dt.timedelta(hours=-8)
             df["timestamp"] = df["timestamp"] + pst_offset
             df.set_index("timestamp", inplace=True)
+            df["change"] = df["close"].pct_change() * 100
             df["volume"] = df["volume_qty"] * df["close"]
-            for k, v in self.technical_indicators["ema"].items():
-                key = f"ema_{v}"
-                skey = f"spread_{v}"
-                df[key] = self.ta.ema(df["close"], v)
-                df[skey] = ((df[key]) - df["close"]) / abs(df["close"]) * 100
-
-            df["rsi"] = self.ta.rsi(df["close"])
-            df["vwap"] = self.ta.vwap(
-                df["high"],
-                low=df["low"],
-                close=df["close"],
-                volume_share_qty=df["volume_qty"],
-            )
-            df["vwap_spread"] = ((df["vwap"] - df["close"]) / abs(df["close"])) * 100
+            df["average_volume"] = df["volume"].rolling(window=30).mean()
+            df["relative_volume"] = df["volume"] / df["average_volume"]
+            if apply_indicators:
+                self._apply_indicators(df, indicators)
         return df
 
     def _fetch_candle(
@@ -134,6 +146,72 @@ class CentralizedExchange:
                     if attempt_alt_delimeter:
                         return pd.DataFrame()
                     attempt_alt_delimeter = True
+            except NotSupported:
+                print(f"Ticker: {ticker}")
+
+    def _apply_indicators(self, df: pd.DataFrame, indicators: list):
+
+        if "rsi" in indicators:
+            df["rsi"] = self.ta.rsi(df["close"])
+        if "ema" in indicators:
+            for k, v in self.technical_indicators["ema"].items():
+                key = f"ema_{v}"
+                skey = f"spread_{v}"
+                okey = f"ema_{v}_over"
+                df[key] = self.ta.ema(df["close"], v)
+                df[skey] = ((df[key]) - df["close"]) / abs(df["close"]) * 100
+                df[okey] = df["close"] > df[key]
+
+        if "vwap" in indicators:
+            df["vwap"] = self.ta.vwap(
+                df["high"],
+                low=df["low"],
+                close=df["close"],
+                volume_share_qty=df["volume_qty"],
+            )
+            df["vwap_spread"] = ((df["vwap"] - df["close"]) / abs(df["close"])) * 100
+
+        return df
+
+    def aggregate_candles(
+        self,
+        tickers: list,
+        market: str = "USD",
+        timeframe="1m",
+        limit: int = 300,
+        stable_coin: bool = True,
+        add_info=["rsi", "spread_9", "spread_20", "spread_200", "relative_volume"],
+    ):
+
+        data = {}
+        for t in tickers:
+            candles = self.fetch_candles(t, market, timeframe, limit, stable_coin)
+            print(f"Candles: {candles}")
+            data[(t, "open")] = candles["open"]
+            data[(t, "high")] = candles["high"]
+            data[(t, "low")] = candles["low"]
+            data[(t, "close")] = candles["close"]
+            data[(t, "volume")] = candles["volume"]
+
+            if add_info != []:
+                for ai in add_info:
+                    try:
+                        data[(t, ai)] = candles[ai]
+                        data[(t, f"traj_{ai}")] = self._get_trajectory(
+                            values=candles[ai], window=5
+                        )
+                    except KeyError:
+                        pass
+        data = pd.DataFrame(data)
+
+        vals = self._find_highest(data, "traj_rsi")
+        print(f"DATA: {vals}")
+
+    """
+    ==================================================================================================================================
+    Markets
+    ==================================================================================================================================
+    """
 
     def fetch_markets(self):
         markets = self.exchange.fetch_markets()
@@ -176,6 +254,12 @@ class CentralizedExchange:
                 pass
             index += 1
 
+    """
+    ==================================================================================================================================
+    Plots
+    ==================================================================================================================================
+    """
+
     def plot(self, ticker: str):
         add_plots = []
         candles = self.fetch_candles(ticker)
@@ -202,3 +286,30 @@ class CentralizedExchange:
             figratio=(10, 6),  # Aspect ratio of the figure
             figscale=1.2,
         )
+
+    """
+    ==================================================================================================================================
+    Utilities
+    ==================================================================================================================================
+    """
+
+    def _get_trajectory(self, values: pd.Series, window: int):
+        t = values.shift(window)
+        v = (values - t) / t
+        return v
+
+    def _find_highest(self, df: pd.DataFrame, column: str):
+        cols = df.columns.to_list()
+        tickers = [c[0] for c in cols]
+        tickers = list(set(tickers))  # Remove duplicates.
+        data = {}
+        for t in tickers:
+            value = df[t][column].iloc[-1]
+            data[t] = value
+        # Find largest key and value.
+        largest_key = max(data, key=data.get)
+        largest_value = data[largest_key]
+        return largest_key, largest_value
+
+    def _find_trend_length(self, values: pd.Series):
+        pass
