@@ -3,6 +3,7 @@ pandas
 setuptools
 matplotlib
 scipy
+selenium
 
 # Finance Related
 ccxt

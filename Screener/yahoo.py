@@ -2,7 +2,7 @@ import warnings
 import numpy as np
 import pandas as pd
 
-
+# Yahoo python
 import yfinance as yf
 
 # Date & Time
@@ -63,14 +63,15 @@ class YahooAggregator:
 
 
 class YahooScreener:
-    def __init__(self, ticker: str):
-        self.ticker = ticker.upper()
-        self.obj = yf.Ticker(ticker=self.ticker)
-        self.income_statement = self.obj.income_stmt.iloc[
-            :, ::-1
-        ]  # Reverse columns. Now new dates are on the right.
-        self.balance_sheet = self.obj.balance_sheet.iloc[:, ::-1]
-        self.cash_flow = self.obj.cash_flow.iloc[:, ::-1]
+    def __init__(self, ticker: str = ""):
+        if ticker != "":
+            self.ticker = ticker.upper()
+            self.obj = yf.Ticker(ticker=self.ticker)
+            self.income_statement = self.obj.income_stmt.iloc[
+                :, ::-1
+            ]  # Reverse columns. Now new dates are on the right.
+            self.balance_sheet = self.obj.balance_sheet.iloc[:, ::-1]
+            self.cash_flow = self.obj.cash_flow.iloc[:, ::-1]
 
     """
     ==================================================================================================================================
@@ -231,6 +232,12 @@ class YahooScreener:
         fcf = self.get_fcf()
         fcf_margin = fcf / rev
         return fcf_margin
+
+    """
+    ==================================================================================================================================
+    Day Gainers/Losers
+    ==================================================================================================================================
+    """
 
 
 """

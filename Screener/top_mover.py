@@ -2,9 +2,12 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+pd.set_option("display.float_format", "{:,.2f}".format)
+
 
 # Custom
 from TechnicalAnalysis.ta import TechnicalAnalysis
+from Screener.yahoo import YahooScreener
 
 
 class TopMovers:
@@ -14,13 +17,17 @@ class TopMovers:
         crypto_quotes: str = "USD",
         convert_tz: bool = True,
         local_tz: str = "PST",
+        mcap_terms: str = "m",
     ) -> None:
         self.is_crypto = is_crypto
         self.crypto_quotes = crypto_quotes
         self.convert_tz = convert_tz
         self.local_tz = local_tz.upper()
+        self.mcap_terms = mcap_terms
         self.tickers = []
         self.data = pd.DataFrame()
+        self.metrics = pd.DataFrame()
+        self.yahoo = YahooScreener()
 
     def set_data(
         self,
@@ -60,6 +67,59 @@ class TopMovers:
 
     def get_data(self):
         return self.data
+
+    def set_metrics(
+        self,
+        tickers: list = [],
+        show_percent_values: bool = False,
+        include_base_columns: bool = False,
+    ):
+        percentage_cols = ["short_ratio", "relative_volume"]
+
+        if self.is_crypto:
+            pass
+        else:
+            if tickers == []:
+                tickers = self.tickers
+            for t in tickers:
+                t_obj = yf.Ticker(t)
+                info = t_obj.info
+                # Short Ratio
+                shares = info.get("sharesOutstanding")
+                shares_short = info.get("sharesShort")
+                short_ratio = shares_short / shares
+                short_ratio *= 100
+                shares = self._format_magnitude(shares)
+                shares_short = self._format_magnitude(shares_short)
+                if include_base_columns:
+                    self.metrics.loc[t, f"shares({self.mcap_terms})"] = shares
+                    self.metrics.loc[t, f"shares_short({self.mcap_terms})"] = (
+                        shares_short
+                    )
+                self.metrics.loc[t, "short_ratio"] = short_ratio
+                # Relative Volume
+                vol = info.get("volume")
+                avg_vol = info.get("averageVolume")
+                rel_vol = vol / avg_vol
+                if show_percent_values:
+                    rel_vol *= 100
+                    self.metrics.loc[t, "relative_volume"] = rel_vol
+                else:
+                    self.metrics.loc[t, "relative_volume"] = rel_vol
+                # Marketcap
+                mcap = info.get("marketCap")
+                mcap = self._format_magnitude(mcap)
+                self.metrics.loc[t, f"marketcap({self.mcap_terms})"] = mcap
+
+            if show_percent_values:
+                perc_format = "{:,.2f}%"
+                for c in percentage_cols:
+                    self.metrics[c] = self.metrics[c].apply(
+                        lambda x: perc_format.format(x)
+                    )
+
+    def get_metrics(self):
+        return self.metrics
 
     def _multi_fetch_candle(
         self,
@@ -163,6 +223,38 @@ class TopMovers:
 
         df = pd.concat(values, axis=1, keys=tickers)
         return df
+
+    def _format_magnitude(self, value):
+        thousands = ["t", "th", "thousand", "thousands"]
+        millions = ["m", "mi", "mil", "million", "millions"]
+        billions = ["b", "bi", "bil", "billion", "billions"]
+        term = self.mcap_terms.lower()
+        if term in thousands:
+            value /= 1_000
+        elif term in millions:
+            value /= 1_000_000
+        elif term in billions:
+            value /= 1_000_000_000
+        return value
+
+    def _get_term_base(self):
+        """
+        Uses terms in millions as a base comparison.
+
+        So if it is
+
+        """
+        thousands = ["t", "th", "thousand", "thousands"]
+        millions = ["m", "mi", "mil", "million", "millions"]
+        billions = ["b", "bi", "bil", "billion", "billions"]
+        term = self.mcap_terms.lower()
+        if term in thousands:
+            value /= 1_000
+        elif term in millions:
+            value /= 1_000_000
+        elif term in billions:
+            value /= 1_000_000_000
+        return value
 
     """
     ===================================================

@@ -13,6 +13,10 @@ from MachineLearning.NN.trailing_candles import Dataset, prepare_data
 # Ticker lists
 from LocalStorage.ticker_lists import gmx
 
+from GUI.stock_gui import main
+
+
+from Chart.stock_charts import StockCharts
 
 # Look at this for dex prices: https://coinsbench.com/using-web3-python-to-get-latest-price-of-smart-contract-token-92aafcb2bde7
 
@@ -54,7 +58,7 @@ def YAHOO():
 
 
 def OPTIONS():
-    op = Options("RIVN")
+    op = Options("AAPL", "2025-01-24")
     c = op.get_options_chain()
 
 
@@ -71,4 +75,7 @@ if __name__ == "__main__":
     # end = time.time()
     # elapse = end - start
     # print(f"ELAPSE: {elapse}")
-    ML()
+    s = StockCharts()
+    t1 = ["RKLB", "RDW", "ASTS", "PL", "LUNR"]
+    tickers = ["AAPL", "MSFT", "NVDA", "RKLB"]
+    s.compare_candles(t1)

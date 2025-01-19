@@ -14,8 +14,9 @@ import datetime as dt
 
 
 class Options:
-    def __init__(self, ticker: str) -> None:
+    def __init__(self, ticker: str, chain_date: str = "") -> None:
         self.ticker = ticker.upper()
+        self.chain_date = chain_date
         self.obj = yf.Ticker(self.ticker)
         self.options_chain = pd.DataFrame()
         self.calls = pd.DataFrame()
@@ -36,14 +37,20 @@ class Options:
     """
 
     def set_options_chain(self):
-        self.options_chain = self.obj.option_chain()
-        self.calls = self._apply_options_data(self.options_chain.calls, "call")
-        self.puts = self._apply_options_data(self.options_chain.puts, "put")
+        if self.chain_date != "":
+            self.options_chain = self.obj.option_chain(self.chain_date)
+        else:
+            self.options_chain = self.obj.option_chain()
+        self.calls = self.options_chain.calls
+        self.puts = self.options_chain.puts
+        self.calls["option_type"] = "call"
+        self.puts["option_type"] = "put"
+        self.options_chain = pd.concat([self.calls, self.puts]).reset_index(drop=True)
+        self.options_chain = self._apply_options_data(self.options_chain)
 
-        print(f"CALLS: {self.calls}")
-
-    def _apply_options_data(self, option_data: pd.DataFrame, option_type: str):
+    def _apply_options_data(self, option_data: pd.DataFrame):
         candles = self.get_candles()
+        option_data["mark"] = (option_data["bid"] + option_data["ask"]) / 2
         option_data["sigma"] = candles["sigma"].iloc[-1]
         option_data["stockPrice"] = candles["Close"].iloc[-1]
         option_data["expirationDate"] = option_data["contractSymbol"].apply(
@@ -51,9 +58,27 @@ class Options:
         )
         option_data["dte"] = option_data["expirationDate"].apply(self._apply_dte)
         option_data["delta"] = option_data.apply(
-            lambda row: self.greeks.apply_delta(row, option_type), axis=1
+            lambda row: self.greeks.apply_delta(row), axis=1
+        )
+        option_data["intrinsic_value"] = option_data.apply(
+            lambda row: self._apply_intrinsic_value(row), axis=1
+        )
+        option_data["extrinsic_value"] = option_data.apply(
+            lambda row: self._apply_extrinsic_value(row), axis=1
+        )
+        option_data["extrinsic_%"] = (
+            option_data["extrinsic_value"] / option_data["intrinsic_value"]
+        ) * 100
+        option_data["extrinsic_%"] = option_data["extrinsic_%"].apply(
+            self.decimal_format.format
+        )
+        option_data["total_value"] = (
+            option_data["intrinsic_value"] + option_data["extrinsic_value"]
         )
         option_data["delta"] = option_data["delta"].apply(self.decimal_format.format)
+        option_data = option_data.apply(
+            lambda row: self.greeks._apply_black_scholes(row), axis=1
+        )
         return option_data
 
     def get_options_chain(self):
@@ -101,19 +126,36 @@ class Options:
     ==================================================================================================================================
     """
 
+    def _apply_intrinsic_value(self, row: pd.Series):
+        S = row["stockPrice"]
+        K = row["strike"]
+        option_type = row["option_type"]
+        if option_type == "call":
+            intrinsic = max(S - K, 0)  # Assing 0 if S - K < 0
+        elif option_type == "put":
+            intrinsic = max(K - S, 0)
+        return intrinsic
+
+    def _apply_extrinsic_value(self, row: pd.Series):
+        option_price = row["ask"]
+        intrinsic = row["intrinsic_value"]
+        extrinsic = option_price - intrinsic
+        return extrinsic
+
     def _apply_expiration_date(self, contract_symbol: str):
-        data = self.parse_contract_symbol(contract_symbol)
+        data = self.parse_contract_symbol(contract_symbol, return_tuple=True)
         date = data[1]
         return date
 
     def _apply_dte(self, date: str):
         current_date = dt.datetime.now()
+        print(f"DATE: {date}")
         date_obj = dt.datetime.strptime(date, self.date_format)
 
         delta = date_obj - current_date
         return delta.days
 
-    def parse_contract_symbol(self, contract_symbol):
+    def parse_contract_symbol(self, contract_symbol, return_tuple: bool = False):
         # Regular expression
         pattern = r"(?P<ticker>[A-Z]+)(?P<date>\d{6})(?P<option_type>[CP])(?P<strike_price>\d+)"
         matches = re.match(pattern, contract_symbol)
@@ -128,7 +170,19 @@ class Options:
             option_type = matches.group("option_type")
             strike_price = float(matches.group("strike_price")) / 1000
 
-            return ticker, date, option_type, strike_price
+            if return_tuple:
+                return ticker, date, option_type, strike_price
+            else:
+                return f"{ticker} | {date} | {option_type} | ${strike_price}"
+
+    """
+    ==================================================================================================================================
+    Plotting
+    ==================================================================================================================================
+    """
+
+    def plot_volatility_surface(self):
+        pass
 
 
 class Greeks:
@@ -162,17 +216,31 @@ class Greeks:
         float: Delta of the option
         """
         # Calculate d1
-        d1 = (math.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * math.sqrt(T))
-        # Calculate delta
-        if option_type == "call":
-            delta = norm.cdf(d1)  # N(d1) for calls
-        elif option_type == "put":
-            delta = norm.cdf(d1) - 1  # N(d1) - 1 for puts
-        else:
-            raise ValueError("Invalid option_type. Use 'call' or 'put'.")
+        print(f"T: {T}")
+        try:
+            d1 = (math.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * math.sqrt(T))
+            # Calculate delta
+            if option_type == "call":
+                delta = norm.cdf(d1)  # N(d1) for calls
+            elif option_type == "put":
+                delta = norm.cdf(d1) - 1  # N(d1) - 1 for puts
+            else:
+                raise ValueError("Invalid option_type. Use 'call' or 'put'.")
+        except ValueError:
+            delta = np.nan
         return delta
 
-    def apply_delta(self, option_data, option_type: str):
+    def new_delta(self, S, K, T, r, sigma, option_type):
+        d1 = (math.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * math.sqrt(T))
+        if option_type == "call":
+            return norm.cdf(d1)  # N(d1)
+        elif option_type == "put":
+            return norm.cdf(d1) - 1  # N(d1) - 1
+        else:
+            raise ValueError("Invalid option type. Use 'call' or 'put'.")
+
+    def apply_delta(self, option_data):
+        option_type = option_data["option_type"]
         S = option_data["stockPrice"]
         K = option_data["strike"]
         T = option_data["dte"] / 365
@@ -182,7 +250,7 @@ class Greeks:
         new_sigma = self.get_implied_sigma(
             S, K, T, r, sigma, q=0, option_type=option_type
         )
-        print(f"S: {S}   K: {K}  T: {T}  R: {r}  SIGMA: {sigma}  NEW: {new_sigma}")
+        # print(f"S: {S}   K: {K}  T: {T}  R: {r}  SIGMA: {sigma}  NEW: {new_sigma}")
         delta = self.get_delta(S, K, T, r, sigma, option_type)
         return delta
 
@@ -199,6 +267,18 @@ class Greeks:
     def objective_function(self, sigma, S, K, T, r, q, option_type: str):
         model_price = self.black_scholes(S, K, T, r, sigma, q, option_type)
         return (model_price - S) ** 2
+
+    def _apply_black_scholes(self, row: pd.Series):
+        print(f"ROW: {row}")
+
+        bs = self.black_scholes(
+            row["stockPrice"],
+            K=row["strike"],
+            T=row["dte"] / 365,
+            r=0.0465,
+            sigma=row["sigma"],
+            q=0,
+        )
 
     def black_scholes(self, S, K, T, r, sigma, q, option_type="call"):
         d1 = (np.log(S / K) + (r - q + (sigma**2) / 2) * T) / (sigma * np.sqrt(T))
