@@ -131,3 +131,30 @@ class Scraper:
             if scroll:
                 self.browser.execute_script("arguments[0].click();", element)
             element.click()
+
+    def _find_table_dimensions(
+        self,
+        base_row_xpath: str,
+        base_row_index: int,
+        base_col_xpath: str,
+        base_col_index: int,
+    ):
+        # Row handling
+        rows = 0
+        while True:
+            try:
+                data = self.read_data(base_row_xpath.format(base_row_index))
+                rows += 1
+            except NoSuchElementException:
+                break
+            base_row_index += 1
+        # Column handling
+        cols = 0
+        while True:
+            try:
+                data = self.read_data(base_col_xpath.format(base_col_index))
+                cols += 1
+            except NoSuchElementException:
+                break
+            base_col_index += 1
+        return (rows, cols)

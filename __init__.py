@@ -10,6 +10,9 @@ from Chart.correlation import Correlation
 
 from Chart.stock_charts import StockCharts
 from Scrapers.webull import Webull
+from Scrapers.finviz import Finviz
+
+from Options.option_utils import OptionScalping
 
 # Look at this for dex prices: https://coinsbench.com/using-web3-python-to-get-latest-price-of-smart-contract-token-92aafcb2bde7
 
@@ -19,8 +22,9 @@ candle_storage = "./LocalStorage/Candles"
 if __name__ == "__main__":
     # s = StockCharts()
     # s.compare_candles(["BTC-USD", "MSTR"], interval="1m", period="max")
-    w = Webull()
-    w.scrape_gainers(post_market=True)
+    op = OptionScalping()
+    calls = op.get_calls("RKLB")
+    print(f"Calls: {calls.columns.to_list()}")
     # c = Correlation()
     # c.plot_matrix(["AAPL", "MSFT", "RKLB", "BTC-USD", "MSTR"])
     # p = PairTrade("BTC-USD", "MSTR")
