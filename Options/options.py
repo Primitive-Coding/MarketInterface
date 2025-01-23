@@ -126,6 +126,34 @@ class Options:
     ==================================================================================================================================
     """
 
+    def get_price_to_strike_difference(self, strike_price: float, option_type: str):
+        candles = self.get_candles()
+        close = candles["Close"].iloc[-1]
+        print(f"CLOSE: {close}   STRIKE: {strike_price}")
+        if option_type == "call":
+            diff = (strike_price - close) / abs(close)
+        elif option_type == "put":
+            diff = (close - strike_price) / abs(close)
+            diff *= -1
+        diff *= 100
+        return diff
+
+    def find_historical_correlation(self, value: float, window: int, option_type: str):
+
+        df = self.get_candles()
+        drop_windows = []
+        column = "Close"
+        for i in range(len(df) - window + 1):
+            start_value = df[column].iloc[i]
+            end_value = df[column].iloc[i + window - 1]
+            percentage_change = ((end_value - start_value) / start_value) * 100
+            if option_type == "put":
+                if percentage_change <= -value:
+                    drop_windows.append(df.iloc[i : i + window])
+                elif percentage_change >= value:
+                    drop_windows.append(df.iloc[i : i + window])
+        return drop_windows
+
     def _apply_intrinsic_value(self, row: pd.Series):
         S = row["stockPrice"]
         K = row["strike"]
@@ -149,9 +177,7 @@ class Options:
 
     def _apply_dte(self, date: str):
         current_date = dt.datetime.now()
-        print(f"DATE: {date}")
         date_obj = dt.datetime.strptime(date, self.date_format)
-
         delta = date_obj - current_date
         return delta.days
 
@@ -216,7 +242,6 @@ class Greeks:
         float: Delta of the option
         """
         # Calculate d1
-        print(f"T: {T}")
         try:
             d1 = (math.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * math.sqrt(T))
             # Calculate delta

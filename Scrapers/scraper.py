@@ -16,6 +16,7 @@ class Scraper:
         self.chrome_options = webdriver.ChromeOptions()
         self.chrome_options.add_argument("--no-sandbox")
         self.chrome_options.add_argument("--disable-gpu")
+        self.chrome_driver_path = self._get_chrome_driver_path()
         self.browser = None
 
     def _get_chrome_driver_path(self):
@@ -48,7 +49,7 @@ class Scraper:
         self.browser.quit()
 
     def read_data(
-        self, xpath: str, wait: bool = False, _wait_time: int = 5, tag: str = ""
+        self, xpath: str, wait: bool = False, wait_time: int = 5, tag: str = ""
     ) -> str:
         """
         :param xpath: Path to the web element.
@@ -60,7 +61,7 @@ class Scraper:
         if wait:
             try:
                 data = (
-                    WebDriverWait(self.browser, _wait_time)
+                    WebDriverWait(self.browser, wait_time)
                     .until(EC.presence_of_element_located((By.XPATH, xpath)))
                     .text
                 )
@@ -78,6 +79,22 @@ class Scraper:
             except NoSuchElementException:
                 data = "N\A"
         # Return the text of the element found.
+        return data
+
+    def read_data_by_classname(
+        self, classname: str, wait: bool = False, wait_time: int = 5
+    ):
+        if wait:
+            try:
+                data = (
+                    WebDriverWait(self.browser, wait_time)
+                    .until(EC.presence_of_element_located((By.CLASS_NAME, classname)))
+                    .text
+                )
+            except TimeoutException:
+                print(f"[Failed Class Name] {classname}")
+        else:
+            pass
         return data
 
     def click_button(

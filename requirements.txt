@@ -3,6 +3,7 @@ pandas
 setuptools
 matplotlib
 scipy
+seaborn
 selenium
 
 # Finance Related
@@ -14,3 +15,8 @@ yfinance
 
 # Machine Learning Related 
 transformers
+
+
+# Ollama
+langchain-ollama
+langchain-core

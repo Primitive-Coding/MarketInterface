@@ -1,5 +1,13 @@
 venv
 .env
+Analysis/__pycache__
+Chart/__pycache__
 Crypto/CEX/__pycache__
+ETF/__pycache__
+GUI/__pycache__
+LocalStorage/__pycache__
+MachineLearning/__pycache__
 Options/__pycache__
 Screener/__pycache__
+Strategies/__pycache__
+TechnicalAnalysis/__pycache__
